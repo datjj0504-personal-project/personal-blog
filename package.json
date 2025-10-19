@@ -1,0 +1,28 @@
+{
+	"name": "personal-blog",
+	"version": "1.0.0",
+	"description": "This is a personal project to practice server nodejs ",
+	"main": "server.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"start": "node src/server.js",
+		"dev": "nodemon src/server.js"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/datjj0504-personal-project/personal-blog.git"
+	},
+	"author": "datnt",
+	"license": "ISC",
+	"bugs": {
+		"url": "https://github.com/datjj0504-personal-project/personal-blog/issues"
+	},
+	"homepage": "https://github.com/datjj0504-personal-project/personal-blog#readme",
+	"dependencies": {
+		"dotenv": "17.2.3",
+		"express": "5.1.0"
+	},
+	"devDependencies": {
+		"nodemon": "^3.1.10"
+	}
+}
