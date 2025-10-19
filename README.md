@@ -11,3 +11,9 @@ Note:
 - Package `nodemon`: is a tool that helps developers nodejs based application automatically restart node application when file changes in the directory are deteced.
 - `--save-dev` to only use when develop application.
 - package: `dotenv` is a zero-dependency module that loads environment variables from a `.env` file into `process.env`.
+
+**Date: 2025-10-19**
+
+- In nodejs, each file JS is a separate module, if you wanna use code in file A into file B --> export this.
+- `CORS` (Cross-Origin Resource Sharing): is browser security mechanism that prevents a website in domain A from calling data from domain B without permission.
+- `Sequelize` is an easy-to-use and promise-based Node.js ORM tool for Postgres, MySQL, MariaDB, SQLite, DB2, Microsoft SQL Server, and Snowflake. It features solid transaction support, relations, eager and lazy loading, read replication and more.
