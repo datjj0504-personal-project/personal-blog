@@ -4,6 +4,12 @@
  * Stores token and automatically deletes it after expiresIn time
  */
 
+// [1]: Import necessary modules (none needed for basic implementation)
+const logger       = require('../utilities/logger');
+const createLogger = require('../utilities/logger');
+const LOG          = createLogger('TOKEN MANAGER');
+
+// [2]: Define the TokenManager class
 class TokenManager {
 	constructor() {
 		// Store: { token: { username, expiresAt, timeoutId } }
@@ -29,7 +35,7 @@ class TokenManager {
 		// Set auto-delete timeout
 		const timeoutId = setTimeout(() => {
 			this.removeToken(token);
-			console.log(`Token for user '${username}' has expired and been removed`);
+			LOG.info(`Token for user '${username}' has expired and been removed`);
 		}, expiresAtMs);
 
 		// Store token info
@@ -39,7 +45,7 @@ class TokenManager {
 			timeoutId
 		});
 
-		console.log(`Token saved for user '${username}', expires at: ${expiresAt.toISOString()}`);
+		LOG.info(`Token saved for user '${username}', expires at: ${expiresAt.toISOString()}`);
 	}
 
 	/**
@@ -71,7 +77,7 @@ class TokenManager {
 			clearTimeout(tokenInfo.timeoutId);
 			// Delete from storage
 			this.tokens.delete(token);
-			console.log(`Token removed for user '${tokenInfo.username}'`);
+			LOG.info(`Token removed for user '${tokenInfo.username}'`);
 		}
 	}
 
@@ -100,5 +106,5 @@ class TokenManager {
 	}
 }
 
-// Export singleton instance
+// [3]: Export singleton instance
 module.exports = new TokenManager();

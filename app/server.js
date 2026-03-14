@@ -1,40 +1,70 @@
-// Import modules
+// [1]: Load enviroment variables from .env file
 require('dotenv').config();
-const express = require('express');
-const cors    = require('cors');
-const db      = require("./models");
 
-// Create app express
+// [2]: Import modules
+//        express: Web framework for Node.js
+//        cors: Middleware to enable Cross-Origin Resource Sharing (CORS)
+//        db: Database models and connection (using Sequelize)
+//        logger: Custom logging utility for consistent logging across the application
+//        createLogger: Function to create a logger instance for a specific module (used for logging in this file)
+// 	      LOG: Logger instance for the server module, used to log messages related to server operations and events
+const express      = require('express');
+const cors         = require('cors');
+const db           = require("./models");
+const logger       = require('./utilities/logger');
+const createLogger = require('./utilities/logger');
+const LOG          = createLogger('SERVER');
+
+// [3]: Create an Express application instance
+//        This instance will be used to define routes and middleware for handling HTTP requests
 const app = express();
 
-// Middleware to read data JSON in request body (parse requests of content-type - application/json)
+// [4]: Middleware to read data JSON in request body (parse requests of content-type - application/json)
 app.use(express.json());
-// Allow front-end access
+
+// [5]: Middleware to allow front-end access
 app.use(cors());
 
+// [6]: Middleware to log incoming requests (for debugging and monitoring)
+app.use((req, res, next) => {
+	LOG.info(`HTTP REQUEST: ${req.method} ${req.url}`);
+	next();
+});
+
+// [7]: ENV PATH API
+const PORT       = process.env.SERVER_PORT || 8000;
+const IP_ADDRESS = process.env.IP_ADDRESS || 'localhost';
+const BASE_PATH  = process.env.BASE_PATH || '/datnt/blog/server';
+
+// [8]: Routes definition: Import and use routes defined in separate files for better organization and maintainability
+const homeRoutes   = require('./routes/home.routes');
+const authRoutes   = require('./routes/auth.routes');
+const systemRoutes = require('./routes/system.routes');
+app.use(BASE_PATH, homeRoutes);
+app.use(`${BASE_PATH}/auth`, authRoutes);
+app.use(`${BASE_PATH}/system`, systemRoutes);
+
+// [9]: Start the server and connect to the database
 (async () => {
 	try {
-		// [1]: Connect database
+		// [9-1]: Connect database
 		await db.sequelize.authenticate();
-		console.log("✅ Connected to MySQL successfully!");
+		LOG.info("Connected to MySQL successfully!");
 
-		// [2]: Create table users if NOT existed
+		// [9-2]: Create table users if NOT existed
 		await db.sequelize.sync();
-		console.log("✅ User table checked (created if not exists)");
+		LOG.info("User table checked (created if not exists)");
 		
-		// [3]:Define port
+		// [9-3]: Define port
 		const PORT = process.env.SERVER_PORT || 8000;
 
-		// [4]: Start-up server
+		// [9-4]: Start-up server
 		app.listen(PORT, () => {
-			console.log(`✅ Server is running on http://localhost:${PORT}`);
+			LOG.info(`Server is running on http://localhost:${PORT}`);
 		});
 	} catch (error) {
-		console.error("❌ Unable to connect to the database:", error.message);
+		LOG.error("Unable to connect to the database:");
+		logger.error("SERVER", error.message);
 		process.exit(1);
 	}
 })();
-
-// Routes
-const homeRoutes = require('./routes/home.routes');
-app.use('/', homeRoutes);

@@ -1,12 +1,17 @@
-const db = require("../models");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-const Joi = require("joi"); // [1] Import Joi for advanced input validation
+// [###]: Auth controller definition: Define controller functions for handling user registration, login, and logout requests, including input validation, password hashing, JWT token generation, and error handling
+
+// [1]: Import necessary modules
+const db           = require("../models");
+const bcrypt       = require("bcrypt");
+const jwt          = require("jsonwebtoken");
+const Joi          = require("joi"); // Import Joi for advanced input validation
 const tokenManager = require("../services/tokenManager"); // Import token manager for token storage
+const JWT_SECRET   = process.env.JWT_SECRET || "your_jwt_secret_key"; // Use environment variable in production
+const logger       = require('../utilities/logger');
+const createLogger = require('../utilities/logger');
+const LOG          = createLogger('AUTH CTLR');
 
-const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_key"; // Use environment variable in production
-
-// [1] Define validation schemas using Joi for better input validation
+// [2]: Define validation schemas using Joi for better input validation
 const registerSchema = Joi.object({
 	username: Joi.string().min(3).max(50).pattern(/^[a-zA-Z0-9_]+$/).required().messages({
 		'string.pattern.base': '	',
@@ -21,6 +26,7 @@ const registerSchema = Joi.object({
 	})
 });
 
+// [3]: Define validation schema for login (simpler than registration, but still ensures required fields)
 const loginSchema = Joi.object({
 	username: Joi.string().required().messages({
 		'any.required': 'Username is required'
@@ -30,41 +36,46 @@ const loginSchema = Joi.object({
 	})
 });
 
+// [4]: Create a logger instance for the auth controller to log authentication-related events and errors
 module.exports = {
-	// User registration
+	// [4-A]: User registration
 	register: async (req, res) => {
-		console.log('Register endpoint hit with body:', req.body);
+		LOG.debug('Register endpoint hit with body:', req.body);
 		try {
-			// [1] Validate input using Joi schema
+			// [1]: Validate input using Joi schema
 			const { error, value } = registerSchema.validate(req.body);
 			if (error) {
+				LOG.error('Validation error during registration:', error.details[0].message);
 				return res.status(422).json({ success: false, message: error.details[0].message });
 			}
 			const { username, password } = value;
 
-			// [2] Check if user already exists (additional check for robustness)
+			// [2]: Check if user already exists (additional check for robustness)
 			const existingUser = await db.listUsers.findByPk(username);
 			if (existingUser) {
+				LOG.warn('Attempt to register with existing username:', username);
 				return res.status(409).json({ success: false, message: "Username already exists" });
 			}
 
-			// [3] Hash password with bcrypt
+			// [3]: Hash password with bcrypt
 			const hashedPassword = await bcrypt.hash(password, 10);
 
-			// [4] Create user and handle database errors specifically
+			// [4]: Create user and handle database errors specifically
 			let newUser;
 			try {
 				newUser = await db.listUsers.create({ username, password: hashedPassword });
 			} catch (dbError) {
-				// [2] Handle specific database errors
+				// [4-1]: Handle specific database errors
 				if (dbError.name === 'SequelizeUniqueConstraintError') {
+					LOG.warn('Database error during registration - username already exists:', username);
 					return res.status(409).json({ success: false, message: "Username already exists" });
 				}
+				LOG.error('Unexpected database error during registration:', dbError);
 				throw dbError; // Re-throw for general error handling
 			}
+			LOG.debug('Register user successfully:', newUser.username);
 
-			console.log('Register user successfully:', newUser.username);
-			// [3] Return consistent response format
+			// [5]: Return consistent response format
 			return res.status(201).json({
 				success: true,
 				message: 'User registered successfully',
@@ -72,83 +83,92 @@ module.exports = {
 			});
 
 		} catch (error) {
-			console.error('Registration error:', error);
-			// [4] General error handling with consistent format
+			// General error handling with consistent format
+			LOG.error('Registration error:', error);
 			return res.status(500).json({ success: false, message: 'Internal server error' });
 		}
 	},
 
-	// User login
+	// [4-B]: User login
 	login: async (req, res) => {
-		console.log('Login endpoint hit with body:', req.body);
+		LOG.debug('Login endpoint hit with body:\n', req.body);
 		try {
-			// [1] Validate input using Joi schema
+			// [1]: Validate input using Joi schema
 			const { error, value } = loginSchema.validate(req.body);
 			if (error) {
+				LOG.error('Validation error during login:', error.details[0].message);
 				return res.status(422).json({ success: false, message: error.details[0].message });
 			}
 			const { username, password } = value;
 
-			// [2] Find user
+			// [2]: Find user
 			const user = await db.listUsers.findByPk(username);
 			if (!user) {
+				LOG.warn('Attempt to login with invalid username:', username);
 				return res.status(401).json({ success: false, message: 'Invalid credentials' });
 			}
 
-			// [3] Check password with bcrypt
+			// [3]: Check password with bcrypt
 			const isPasswordValid = await bcrypt.compare(password, user.password);
 			if (!isPasswordValid) {
+				LOG.warn('Attempt to login with invalid password for user:', username);
 				return res.status(401).json({ success: false, message: 'Invalid credentials' });
 			}
 
-			// [4] Generate JWT token with expiration info
+			// [4]: Generate JWT token with expiration info
 			const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: '1h' });
 
-			// [4.5] Save token to token manager with auto-expiration (1 hour)
+			// [5]: Save token to token manager with auto-expiration (1 hour)
 			tokenManager.saveToken(token, user.username, 1); // 1 hour
 
-			console.log('Login successful for user:', user.username);
-			// [5] Return consistent response format with token details
+			LOG.debug('Login successful for user:', user.username);
+			// [6]: Return consistent response format with token details
 			return res.status(200).json({
 				success: true,
 				message: 'Login successful',
 				data: {
 					user: { username: user.username },
 					token: token,
-					expiresIn: 1 // [4] Add expiration info for client
+					expiresIn: 1 // Add expiration info for client
 				}
 			});
 
 		} catch (error) {
-			console.error('Login error:', error);
-			// [4] General error handling
+			// General error handling
+			LOG.error('Login error:', error);
 			return res.status(500).json({ success: false, message: 'Internal server error' });
 		}
 	},
 
-	// User logout
+	// [4-C]: User logout
 	logout: (req, res) => {
+		LOG.debug('Logout endpoint hit for user:', req.user?.username);
 		try {
+			// [1]: Extract token from Authorization header
 			const token = req.headers['authorization']?.split(' ')[1];
 			
+			// [2]: Validate token presence
 			if (!token) {
+				LOG.warn('Attempt to logout without a token');
 				return res.status(400).json({
 					success: false,
 					message: 'No token provided'
 				});
 			}
 
-			// Remove token from token manager
+			// [3]: Remove token from token manager
 			tokenManager.logout(token);
 
-			console.log('Logout successful for user:', req.user?.username);
+			// [4]: Return consistent response format
+			LOG.debug('Logout successful for user:', req.user?.username);
 			return res.status(200).json({
 				success: true,
 				message: 'Logout successful'
 			});
 
 		} catch (error) {
-			console.error('Logout error:', error);
+			// General error handling
+			LOG.error('Logout error:', error);
 			return res.status(500).json({
 				success: false,
 				message: 'Internal server error'
