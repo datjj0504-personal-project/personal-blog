@@ -1,110 +1,86 @@
-/**
- * Token Manager Service
- * Manages token storage with automatic expiration
- * Stores token and automatically deletes it after expiresIn time
- */
+// [###]: TokenManager service to handle token storage, validation, and expiration
 
 // [1]: Import necessary modules (none needed for basic implementation)
-const logger       = require('../utilities/logger');
 const createLogger = require('../utilities/logger');
 const LOG          = createLogger('TOKEN MANAGER');
+const TOKEN_EXPIRATION_HOURS = parseFloat(process.env.TOKEN_EXPIRATION_HOURS) || 1; // Default to 1 hour if not set
 
-// [2]: Define the TokenManager class
+// [2]: Define the TokenManager class to handle token storage, validation, and expiration
 class TokenManager {
+	// [2-1]: Constructor initializes the token storage
 	constructor() {
-		// Store: { token: { username, expiresAt, timeoutId } }
-		this.tokens = new Map();
-	}
 
-	/**
-	 * Save token with auto-expiration
-	 * @param {string} token - JWT token
-	 * @param {string} username - Username associated with token
-	 * @param {number} expiresInHours - Token expiration time in hours
-	 */
-	saveToken(token, username, expiresInHours = 1) {
-		// Remove old token if exists
-		if (this.tokens.has(token)) {
-			this.removeToken(token);
+		// username -> session
+		this.sessions = new Map();
+	};
+
+	// [2-2]: Save a token for a user, with an optional expiration time (default from env variable)
+	saveToken(token, username, expirationHours = TOKEN_EXPIRATION_HOURS) {
+		if(this.sessions.has(username)) {
+			this.logout(username);
 		}
 
-		// Calculate expiration time in milliseconds
-		const expiresAtMs = expiresInHours * 60 * 60 * 1000;
-		const expiresAt = new Date(Date.now() + expiresAtMs);
+		const expiresMs = expirationHours * 60 * 60 * 1000;
+		const expiresAt = new Date(Date.now() + expiresMs);
 
-		// Set auto-delete timeout
 		const timeoutId = setTimeout(() => {
-			this.removeToken(token);
-			LOG.info(`Token for user '${username}' has expired and been removed`);
-		}, expiresAtMs);
+			this.logout(username);
+			LOG.info(`Session expired for user '${username}' and has been removed`);
+		}, expiresMs);
 
-		// Store token info
-		this.tokens.set(token, {
+		this.sessions.set(username, {
+			token,
 			username,
 			expiresAt,
 			timeoutId
 		});
-
 		LOG.info(`Token saved for user '${username}', expires at: ${expiresAt.toISOString()}`);
-	}
+	};
 
-	/**
-	 * Verify if token is valid and exists
-	 * @param {string} token - JWT token to verify
-	 * @returns {boolean} - True if token is valid, false otherwise
-	 */
-	verifyToken(token) {
-		return this.tokens.has(token);
-	}
+	// [2-3]: Validate a token by checking if it exists in the sessions map
+	validateToken(token) {
+		for(const session of this.sessions.values()) {
+			if(session.token === token) {
+				return true;
+			}
 
-	/**
-	 * Get token info
-	 * @param {string} token - JWT token
-	 * @returns {Object|null} - Token info or null if not found
-	 */
-	getTokenInfo(token) {
-		return this.tokens.get(token) || null;
-	}
-
-	/**
-	 * Remove token immediately
-	 * @param {string} token - JWT token to remove
-	 */
-	removeToken(token) {
-		const tokenInfo = this.tokens.get(token);
-		if (tokenInfo) {
-			// Clear timeout
-			clearTimeout(tokenInfo.timeoutId);
-			// Delete from storage
-			this.tokens.delete(token);
-			LOG.info(`Token removed for user '${tokenInfo.username}'`);
+			return false;
 		}
-	}
+	};
 
-	/**
-	 * Logout user by removing their token
-	 * @param {string} token - JWT token
-	 */
-	logout(token) {
-		this.removeToken(token);
-	}
+	// [2-4]: Logout a user by clearing their session and removing it from the map
+	logout(username) {
+		const session = this.sessions.get(username);
+		if(!session) {
+			LOG.warn(`Attempt to logout user '${username}' who has no active session`);
+			return;
+		}
+		clearTimeout(session.timeoutId);
+		this.sessions.delete(username);
+		LOG.info(`User '${username}' has been logged out and session removed`);
+	};
 
-	/**
-	 * Get all active tokens (for debugging/monitoring)
-	 * @returns {Array} - Array of token info
-	 */
-	getAllTokens() {
-		const allTokens = [];
-		this.tokens.forEach((info, token) => {
-			allTokens.push({
-				token: token.substring(0, 10) + '...', // Show only first 10 chars for security
-				username: info.username,
-				expiresAt: info.expiresAt
-			});
-		});
-		return allTokens;
-	}
-}
+	// [2-5]: Additional helper methods for debugging and management
+	getActiveUsers() {
+		return Array.from(this.sessions.keys());
+	};
 
-// [3]: Export singleton instance
+	// [2-6]: Method to get all active sessions (for debugging purposes)
+	getAllSessions() {
+		return Array.from(this.sessions.values()).map(s => ({
+			username: s.username,
+			token: s.token.substring(0, 10) + '...', // Show only first 10 chars for security
+			expiresAt: s.expiresAt
+		}));
+	};
+
+	// [2-7]: Method to check if a user has an active session
+	validateUser(username) {
+		const isActive = this.sessions.has(username);
+		LOG.debug(`Checking active session for user '${username}': ${isActive}`);
+		return isActive;
+	};
+};
+
+// [3]: Export an instance of the TokenManager to be used across the application
 module.exports = new TokenManager();
