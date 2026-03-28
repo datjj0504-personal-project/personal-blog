@@ -64,7 +64,7 @@ app.use(`${BASE_PATH}/system`, systemRoutes);
 		});
 	} catch (error) {
 		LOG.error("Unable to connect to the database:");
-		logger.error("SERVER", error.message);
+		LOG.error("SERVER", error.message);
 		process.exit(1);
 	}
 })();
