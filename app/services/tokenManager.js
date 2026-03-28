@@ -39,13 +39,12 @@ class TokenManager {
 
 	// [2-3]: Validate a token by checking if it exists in the sessions map
 	validateToken(token) {
-		for(const session of this.sessions.values()) {
-			if(session.token === token) {
+		for (const session of this.sessions.values()) {
+			if (session.token === token) {
 				return true;
 			}
-
-			return false;
 		}
+		return false;
 	};
 
 	// [2-4]: Logout a user by clearing their session and removing it from the map

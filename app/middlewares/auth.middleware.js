@@ -36,7 +36,7 @@ const authMiddleware = (req, res, next) => {
 		const decoded = jwt.verify(token, JWT_SECRET);
 
 		// [2-4]: Check if token exists in token manager (not expired/not revoked)
-		if (!tokenManager.verifyToken(token)) {
+		if (!tokenManager.validateToken(token)) {
 			LOG.warn('Attempt to access protected route with invalid token');
 			return res.status(401).json({
 				success: false,
@@ -51,7 +51,7 @@ const authMiddleware = (req, res, next) => {
 		next();
 	} catch (error) {
 		// Handle specific JWT errors for better client feedback
-		LOG.error('Auth middleware error:', error);
+		LOG.error('Auth middleware error:', { message: error?.message, stack: error?.stack });
 		if (error instanceof jwt.TokenExpiredError) {
 			LOG.warn('Attempt to access protected route with expired token');
 			return res.status(401).json({
@@ -70,7 +70,7 @@ const authMiddleware = (req, res, next) => {
 		}
 
 		// General error handling
-		LOG.error('Auth middleware error:', error);
+		LOG.error('Auth middleware error:', { message: error?.message, stack: error?.stack });
 		return res.status(500).json({
 			success: false,
 			message: 'Internal server error'
