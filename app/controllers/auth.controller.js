@@ -66,7 +66,7 @@ module.exports = {
 			const { username, password } = value;
 
 			// [2]: Check if user already exists (additional check for robustness)
-			const existingUser = await db.listUsers.findByPk(username);
+			const existingUser = await db.listUsers.findOne({ where: { username } });
 			if (existingUser) {
 				LOG.warn('Attempt to register with existing username:', username);
 				return res.status(409).json({ success: false, message: "Username already exists" });
@@ -78,7 +78,11 @@ module.exports = {
 			// [4]: Create user and handle database errors specifically
 			let newUser;
 			try {
-				newUser = await db.listUsers.create({ username, password: hashedPassword });
+				newUser = await db.listUsers.create({
+					username,
+					password: password,
+					password_encode: hashedPassword
+				});
 			} catch (dbError) {
 				// [4-1]: Handle specific database errors
 				if (dbError.name === 'SequelizeUniqueConstraintError') {
@@ -120,14 +124,14 @@ module.exports = {
 			const { username, password } = value;
 
 			// [2]: Find user
-			const user = await db.listUsers.findByPk(username);
+			const user = await db.listUsers.findOne({ where: { username } });
 			if (!user) {
 				LOG.warn('Attempt to login with invalid username:', username);
 				return res.status(401).json({ success: false, message: 'Invalid credentials' });
 			}
 
 			// [3]: Check password with bcrypt
-			const isPasswordValid = await bcrypt.compare(password, user.password);
+			const isPasswordValid = await bcrypt.compare(password, user.password_encode);
 			if (!isPasswordValid) {
 				LOG.warn('Attempt to login with invalid password for user:', username);
 				return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -149,6 +153,17 @@ module.exports = {
 
 			// [6]: Save token to token manager with auto-expiration (1 hour)
 			tokenManager.saveToken(token, user.username, TOKEN_EXPIRATION_HOURS); // Use the configured expiration hours
+
+			// [6-1]: Save login info
+			try {
+				await db.tbInfoLogin.create({
+					time: new Date(),
+					user: user.username,
+					token: token
+				});
+			} catch (logError) {
+				LOG.warn('Failed to write login info:', logError?.message);
+			}
 
 			LOG.debug('Login successful for user:', user.username);
 			// [7]: Return consistent response format with token details
@@ -173,9 +188,10 @@ module.exports = {
 	// Logout
 	// ============================
 	// [4-C]: User logout
-	logout: (req, res) => {
+	logout: async (req, res) => {
 		LOG.debug('show request body: ', req.body);
 		const username = req.user?.username;
+		const token = req.token;
 		LOG.debug('Logout endpoint hit for user:', username);
 		try {
 			
@@ -185,6 +201,17 @@ module.exports = {
 					success: false,
 					message: 'Unauthorized'
 				});
+			}
+
+			// [4-C-1]: Save logout info
+			try {
+				await db.tbInfoLogout.create({
+					time: new Date(),
+					user: username,
+					token: token || ''
+				});
+			} catch (logError) {
+				LOG.warn('Failed to write logout info:', logError?.message);
 			}
 
 			tokenManager.logout(username);

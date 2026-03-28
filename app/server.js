@@ -51,9 +51,9 @@ app.use(`${BASE_PATH}/system`, systemRoutes);
 		await db.sequelize.authenticate();
 		LOG.info("Connected to MySQL successfully!");
 
-		// [9-2]: Create table users if NOT existed
-		await db.sequelize.sync();
-		LOG.info("User table checked (created if not exists)");
+		// [9-2]: Create/update tables if NOT existed
+		await db.sequelize.sync({ alter: true });
+		LOG.info("Tables checked (created if not exists)");
 		
 		// [9-3]: Define port
 		const PORT = process.env.SERVER_PORT || 8000;
