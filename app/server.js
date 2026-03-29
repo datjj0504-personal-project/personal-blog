@@ -14,6 +14,7 @@ const db           = require("./models");
 const logger       = require('./utilities/logger');
 const createLogger = require('./utilities/logger');
 const LOG          = createLogger('SERVER');
+const tokenRealtimeManager = require('./services/tokenRealtimeManager');
 
 // [3]: Create an Express application instance
 //        This instance will be used to define routes and middleware for handling HTTP requests
@@ -54,6 +55,13 @@ app.use(`${BASE_PATH}/system`, systemRoutes);
 		// [9-2]: Create/update tables if NOT existed
 		await db.sequelize.sync({ alter: true });
 		LOG.info("Tables checked (created if not exists)");
+
+		// [9-2-A]: Clear realtime token table on startup
+		await db.tbManageTokenRealtime.destroy({ where: {}, truncate: true });
+		LOG.info("Realtime token table cleared on startup");
+
+		// [9-2-B]: Start realtime token sync (every 5s)
+		tokenRealtimeManager.start();
 		
 		// [9-3]: Define port
 		const PORT = process.env.SERVER_PORT || 8000;

@@ -73,6 +73,15 @@ class TokenManager {
 		}));
 	};
 
+	// [2-6-A]: Snapshot of active sessions for realtime tracking
+	getSessionsSnapshot() {
+		return Array.from(this.sessions.values()).map(s => ({
+			username: s.username,
+			token: s.token,
+			expiresAt: s.expiresAt
+		}));
+	};
+
 	// [2-7]: Method to check if a user has an active session
 	validateUser(username) {
 		const isActive = this.sessions.has(username);

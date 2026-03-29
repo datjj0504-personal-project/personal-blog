@@ -21,8 +21,10 @@ const CommentsModel = require("./comments.model");
 const Comments = CommentsModel(sequelize, Sequelize);
 const InfoLoginModel = require("./infoLogin.model");
 const InfoLogoutModel = require("./infoLogout.model");
+const TbManageTokenRealtimeModel = require("./tb_manage_token_realtime.model");
 const TbInfoLogin = InfoLoginModel(sequelize, Sequelize);
 const TbInfoLogout = InfoLogoutModel(sequelize, Sequelize);
+const TbManageTokenRealtime = TbManageTokenRealtimeModel(sequelize, Sequelize);
 
 // Relations
 ListUsers.hasMany(Posts, { foreignKey: "user_id" });
@@ -43,5 +45,6 @@ db.postLikes = PostLikes;
 db.comments = Comments;
 db.tbInfoLogin = TbInfoLogin;
 db.tbInfoLogout = TbInfoLogout;
+db.tbManageTokenRealtime = TbManageTokenRealtime;
 
 module.exports = db;
