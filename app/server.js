@@ -41,9 +41,11 @@ const BASE_PATH  = process.env.BASE_PATH || '/datnt/blog/server';
 const homeRoutes   = require('./routes/home.routes');
 const authRoutes   = require('./routes/auth.routes');
 const systemRoutes = require('./routes/system.routes');
+const postsRoutes  = require('./routes/posts.routes');
 app.use(BASE_PATH, homeRoutes);
 app.use(`${BASE_PATH}/auth`, authRoutes);
 app.use(`${BASE_PATH}/system`, systemRoutes);
+app.use(`${BASE_PATH}/posts`, postsRoutes);
 
 // [9]: Start the server and connect to the database
 (async () => {
