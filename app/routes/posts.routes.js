@@ -9,5 +9,8 @@ const authMiddleware = require("../middlewares/auth.middleware");
 // [2]: Define route for creating a post (requires authentication)
 router.post("/create", authMiddleware, postsController.createPost);
 
-// [3]: Export the router to be used in the main server file (app/server.js)
+// [3]: Define route for toggle like/unlike (requires authentication)
+router.post("/like", authMiddleware, postsController.toggleLike);
+
+// [4]: Export the router to be used in the main server file (app/server.js)
 module.exports = router;

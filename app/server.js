@@ -42,10 +42,12 @@ const homeRoutes   = require('./routes/home.routes');
 const authRoutes   = require('./routes/auth.routes');
 const systemRoutes = require('./routes/system.routes');
 const postsRoutes  = require('./routes/posts.routes');
+const feedsRoutes  = require('./routes/feeds.routes');
 app.use(BASE_PATH, homeRoutes);
 app.use(`${BASE_PATH}/auth`, authRoutes);
 app.use(`${BASE_PATH}/system`, systemRoutes);
 app.use(`${BASE_PATH}/posts`, postsRoutes);
+app.use(`${BASE_PATH}/feeds`, feedsRoutes);
 
 // [9]: Start the server and connect to the database
 (async () => {

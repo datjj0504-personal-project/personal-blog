@@ -21,6 +21,7 @@ const createPostSchema = Joi.object({
 		}),
 });
 
+
 // [###]: Controller
 module.exports = {
 	// ============================
@@ -77,6 +78,68 @@ module.exports = {
 			});
 		} catch (error) {
 			LOG.error("Create post error:", { message: error?.message, stack: error?.stack });
+			return res.status(500).json({ status: false, message: "Internal server error" });
+		}
+	},
+
+	// ============================
+	// Toggle like / unlike
+	// ============================
+	toggleLike: async (req, res) => {
+		LOG.debug("Toggle like endpoint hit");
+		try {
+			const postId = parseInt(req.query.post_id, 10);
+			if (!postId || Number.isNaN(postId)) {
+				return res.status(422).json({ status: false, message: "post_id is required" });
+			}
+
+			const username = req.user?.username;
+			if (!username) {
+				return res.status(401).json({ status: false, message: "Unauthorized" });
+			}
+
+			const user = await db.listUsers.findOne({
+				where: { username },
+				attributes: ["user_id"],
+			});
+			if (!user) {
+				return res.status(404).json({ status: false, message: "User not found" });
+			}
+
+			const post = await db.posts.findByPk(postId, { attributes: ["id"] });
+			if (!post) {
+				return res.status(404).json({ status: false, message: "Post not found" });
+			}
+
+			const result = await db.sequelize.transaction(async (transaction) => {
+				const existing = await db.postLikes.findOne({
+					where: { user_id: user.user_id, post_id: postId },
+					transaction,
+				});
+
+				if (existing) {
+					await db.postLikes.destroy({
+						where: { user_id: user.user_id, post_id: postId },
+						transaction,
+					});
+					return { liked: false };
+				}
+
+				await db.postLikes.create(
+					{ user_id: user.user_id, post_id: postId },
+					{ transaction }
+				);
+
+				return { liked: true };
+			});
+
+			return res.status(200).json({
+				status: true,
+				post_id: postId,
+				liked: result.liked,
+			});
+		} catch (error) {
+			LOG.error("Toggle like error:", { message: error?.message, stack: error?.stack });
 			return res.status(500).json({ status: false, message: "Internal server error" });
 		}
 	},
