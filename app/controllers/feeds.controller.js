@@ -55,6 +55,18 @@ module.exports = {
 						model: db.listUsers,
 						attributes: ["username"],
 					},
+					{
+						model: db.comments,
+						attributes: ["id", "post_id", "user_id", "content", "created_at"],
+						separate: true,
+						order: [["created_at", "DESC"]],
+						include: [
+							{
+								model: db.listUsers,
+								attributes: ["username"],
+							},
+						],
+					},
 				],
 				order: [["created_at", "DESC"]],
 			});
@@ -63,6 +75,14 @@ module.exports = {
 				const item = post.toJSON();
 				item.author = item.ListUser?.username || null;
 				item.is_liked = Number(item.is_liked) > 0;
+				item.comments = (item.comments || []).map((comment) => ({
+					id: comment.id,
+					post_id: comment.post_id,
+					user_id: comment.user_id,
+					content: comment.content,
+					created_at: comment.created_at,
+					author: comment.ListUser?.username || null,
+				}));
 				delete item.ListUser;
 				return item;
 			});
