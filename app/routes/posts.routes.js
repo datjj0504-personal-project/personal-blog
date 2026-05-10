@@ -15,5 +15,11 @@ router.post("/like", authMiddleware, postsController.toggleLike);
 // [4]: Define route for creating a comment (requires authentication)
 router.post("/comment", authMiddleware, postsController.createComment);
 
-// [5]: Export the router to be used in the main server file (app/server.js)
+// [5]: Define route for updating a personal post (requires authentication)
+router.post("/update", authMiddleware, postsController.updatePost);
+
+// [6]: Define route for deleting a personal post (requires authentication)
+router.delete("/delete", authMiddleware, postsController.deletePost);
+
+// [7]: Export the router to be used in the main server file (app/server.js)
 module.exports = router;

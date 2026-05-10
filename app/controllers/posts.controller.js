@@ -41,6 +41,46 @@ const createCommentSchema = Joi.object({
 		}),
 });
 
+const updatePostSchema = Joi.object({
+	post_id: Joi.number().integer().positive().required().messages({
+		"number.base": "post_id must be a number",
+		"number.integer": "post_id must be an integer",
+		"number.positive": "post_id must be greater than 0",
+		"any.required": "post_id is required",
+	}),
+	content: Joi.string()
+		.trim()
+		.min(1)
+		.max(500)
+		.required()
+		.messages({
+			"string.empty": "Content is required",
+			"string.min": "Content must be at least 1 character",
+			"string.max": "Content must be at most 500 characters",
+			"any.required": "Content is required",
+		}),
+});
+
+const deletePostSchema = Joi.object({
+	post_id: Joi.number().integer().positive().required().messages({
+		"number.base": "post_id must be a number",
+		"number.integer": "post_id must be an integer",
+		"number.positive": "post_id must be greater than 0",
+		"any.required": "post_id is required",
+	}),
+});
+
+const findAuthenticatedUser = async (username) => {
+	if (!username) {
+		return null;
+	}
+
+	return db.listUsers.findOne({
+		where: { username },
+		attributes: ["user_id"],
+	});
+};
+
 
 // [###]: Controller
 module.exports = {
@@ -64,10 +104,7 @@ module.exports = {
 			}
 
 			// [2]: Find user by username
-			const user = await db.listUsers.findOne({
-				where: { username },
-				attributes: ["user_id"],
-			});
+			const user = await findAuthenticatedUser(username);
 			if (!user) {
 				LOG.warn("Create post attempted with unknown user:", username);
 				return res.status(401).json({ status: false, message: "Unauthorized" });
@@ -120,10 +157,7 @@ module.exports = {
 				return res.status(401).json({ status: false, message: "Unauthorized" });
 			}
 
-			const user = await db.listUsers.findOne({
-				where: { username },
-				attributes: ["user_id"],
-			});
+			const user = await findAuthenticatedUser(username);
 			if (!user) {
 				LOG.warn("Create comment attempted with unknown user:", username);
 				return res.status(401).json({ status: false, message: "Unauthorized" });
@@ -166,6 +200,127 @@ module.exports = {
 	},
 
 	// ============================
+	// Update personal post
+	// ============================
+	updatePost: async (req, res) => {
+		LOG.debug("Update post endpoint hit");
+		try {
+			const { error, value } = updatePostSchema.validate(req.body || {});
+			if (error) {
+				LOG.warn("Validation error during update post:", error.details[0].message);
+				return res.status(422).json({ status: false, message: error.details[0].message });
+			}
+
+			const username = req.user?.username;
+			if (!username) {
+				return res.status(401).json({ status: false, message: "Unauthorized" });
+			}
+
+			const user = await findAuthenticatedUser(username);
+			if (!user) {
+				return res.status(401).json({ status: false, message: "Unauthorized" });
+			}
+
+			const post = await db.posts.findOne({
+				where: {
+					id: value.post_id,
+					user_id: user.user_id,
+				},
+			});
+			if (!post) {
+				return res.status(404).json({ status: false, message: "Post not found" });
+			}
+
+			const result = await db.sequelize.transaction(async (transaction) => {
+				await post.update(
+					{ content: value.content },
+					{ transaction }
+				);
+
+				return {
+					id: post.id,
+					content: post.content,
+					updated_at: post.updatedAt,
+				};
+			});
+
+			return res.status(200).json({
+				status: true,
+				id: result.id,
+				content: result.content,
+				updated_at: result.updated_at,
+			});
+		} catch (error) {
+			LOG.error("Update post error:", { message: error?.message, stack: error?.stack });
+			return res.status(500).json({ status: false, message: "Internal server error" });
+		}
+	},
+
+	// ============================
+	// Delete personal post
+	// ============================
+	deletePost: async (req, res) => {
+		LOG.debug("Delete post endpoint hit");
+		try {
+			const { error, value } = deletePostSchema.validate(req.body || {});
+			if (error) {
+				LOG.warn("Validation error during delete post:", error.details[0].message);
+				return res.status(422).json({ status: false, message: error.details[0].message });
+			}
+
+			const username = req.user?.username;
+			if (!username) {
+				return res.status(401).json({ status: false, message: "Unauthorized" });
+			}
+
+			const user = await findAuthenticatedUser(username);
+			if (!user) {
+				return res.status(401).json({ status: false, message: "Unauthorized" });
+			}
+
+			const post = await db.posts.findOne({
+				where: {
+					id: value.post_id,
+					user_id: user.user_id,
+				},
+				attributes: ["id"],
+			});
+			if (!post) {
+				return res.status(404).json({ status: false, message: "Post not found" });
+			}
+
+			await db.sequelize.transaction(async (transaction) => {
+				await db.comments.destroy({
+					where: { post_id: value.post_id },
+					transaction,
+				});
+
+				await db.postLikes.destroy({
+					where: { post_id: value.post_id },
+					transaction,
+				});
+
+				await db.posts.destroy({
+					where: {
+						id: value.post_id,
+						user_id: user.user_id,
+					},
+					transaction,
+				});
+			});
+
+			return res.status(200).json({
+				status: true,
+				post_id: value.post_id,
+				message: "Post deleted successfully",
+			});
+		} catch (error) {
+			LOG.error("Delete post error:", { message: error?.message, stack: error?.stack });
+			return res.status(500).json({ status: false, message: "Internal server error" });
+		}
+	},
+
+	// ============================
 	// Toggle like / unlike
 	// ============================
 	toggleLike: async (req, res) => {
@@ -181,10 +336,7 @@ module.exports = {
 				return res.status(401).json({ status: false, message: "Unauthorized" });
 			}
 
-			const user = await db.listUsers.findOne({
-				where: { username },
-				attributes: ["user_id"],
-			});
+			const user = await findAuthenticatedUser(username);
 			if (!user) {
 				return res.status(404).json({ status: false, message: "User not found" });
 			}

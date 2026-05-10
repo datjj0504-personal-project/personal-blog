@@ -36,6 +36,7 @@ app.use((req, res, next) => {
 const PORT       = process.env.SERVER_PORT || 8000;
 const IP_ADDRESS = process.env.IP_ADDRESS || 'localhost';
 const BASE_PATH  = process.env.BASE_PATH || '/datnt/blog/server';
+const DB_SYNC_ALTER = process.env.DB_SYNC_ALTER === 'true';
 
 // [8]: Routes definition: Import and use routes defined in separate files for better organization and maintainability
 const homeRoutes   = require('./routes/home.routes');
@@ -58,9 +59,13 @@ app.use(BASE_PATH, commentsRoutes);
 		await db.sequelize.authenticate();
 		LOG.info("Connected to MySQL successfully!");
 
-		// [9-2]: Create/update tables if NOT existed
-		await db.sequelize.sync({ alter: true });
-		LOG.info("Tables checked (created if not exists)");
+		// [9-2]: Create tables if not existed.
+		// Avoid `alter: true` by default because repeated alters on MySQL can
+		// accumulate indexes/foreign keys and eventually hit the 64-key limit.
+		await db.sequelize.sync(DB_SYNC_ALTER ? { alter: true } : {});
+		LOG.info(
+			`Tables checked (${DB_SYNC_ALTER ? "alter mode enabled" : "safe sync mode"})`
+		);
 
 		// [9-2-A]: Clear realtime token table on startup
 		await db.tbManageTokenRealtime.destroy({ where: {}, truncate: true });
@@ -77,7 +82,7 @@ app.use(BASE_PATH, commentsRoutes);
 			LOG.info(`Server is running on http://localhost:${PORT}`);
 		});
 	} catch (error) {
-		LOG.error("Unable to connect to the database:");
+		LOG.error("Unable to start server with current database schema:");
 		LOG.error("SERVER", error.message);
 		process.exit(1);
 	}

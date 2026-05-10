@@ -13,6 +13,7 @@ module.exports = {
 		LOG.debug("Get feeds resources endpoint hit");
 		try {
 			const username = req.user?.username;
+			const personal = String(req.query.personal).toLowerCase() === "true";
 			if (!username) {
 				return res.status(401).json({ status: false, message: "Unauthorized" });
 			}
@@ -25,7 +26,13 @@ module.exports = {
 				return res.status(401).json({ status: false, message: "Unauthorized" });
 			}
 
+			const where = {};
+			if (personal) {
+				where.user_id = user.user_id;
+			}
+
 			const posts = await db.posts.findAll({
+				where,
 				attributes: {
 					include: [
 						[
