@@ -1,0 +1,232 @@
+// [###]: Auth controller definition: Define controller functions for handling user registration, login, and logout requests, including input validation, password hashing, JWT token generation, and error handling
+
+// [1]: Import necessary modules
+const db           = require("../models");
+const bcrypt       = require("bcrypt");
+const jwt          = require("jsonwebtoken");
+const Joi          = require("joi"); // Import Joi for advanced input validation
+const tokenManager = require("../services/tokenManager"); // Import token manager for token storage
+const JWT_SECRET   = process.env.JWT_SECRET || "your_jwt_secret_key"; // Use environment variable in production
+const createLogger = require('../utilities/logger');
+const LOG          = createLogger('AUTH CTLR');
+const TOKEN_EXPIRATION_HOURS = parseFloat(process.env.TOKEN_EXPIRATION_HOURS) || 1; // Default to 1 hour if not set
+
+// [2]: Define validation schemas using Joi for better input validation
+const registerSchema = Joi.object({
+	username: Joi.string()
+		.min(3)
+		.max(50)
+		.pattern(/^[a-zA-Z0-9_]+$/)
+		.required()
+		.messages({
+		'string.pattern.base': '	',
+		'string.min': 'Username must be at least 3 characters',
+		'string.max': 'Username must be at most 50 characters',
+		'any.required': 'Username is required'
+	}),
+
+	password: Joi.string()
+		.min(6)
+		.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+		.required()
+		.messages({
+			'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+			'string.min': 'Password must be at least 6 characters',
+			'any.required': 'Password is required'
+		})
+});
+
+// [3]: Define validation schema for login (simpler than registration, but still ensures required fields)
+const loginSchema = Joi.object({
+	username: Joi.string().required().messages({
+		'any.required': 'Username is required'
+	}),
+	password: Joi.string().required().messages({
+		'any.required': 'Password is required'
+	})
+});
+
+// [###]: Controller
+
+// [4]: Create a logger instance for the auth controller to log authentication-related events and errors
+module.exports = {
+	// ============================
+	// Register
+	// ============================
+	// [4-A]: User registration
+	register: async (req, res) => {
+		LOG.debug('Register endpoint hit with body:', req.body?.username);
+		try {
+			// [1]: Validate input using Joi schema
+			const { error, value } = registerSchema.validate(req.body);
+			if (error) {
+				LOG.error('Validation error during registration:', error.details[0].message);
+				return res.status(422).json({ success: false, message: error.details[0].message });
+			}
+			const { username, password } = value;
+
+			// [2]: Check if user already exists (additional check for robustness)
+			const existingUser = await db.listUsers.findOne({ where: { username } });
+			if (existingUser) {
+				LOG.warn('Attempt to register with existing username:', username);
+				return res.status(409).json({ success: false, message: "Username already exists" });
+			}
+
+			// [3]: Hash password with bcrypt
+			const hashedPassword = await bcrypt.hash(password, 10);
+
+			// [4]: Create user and handle database errors specifically
+			let newUser;
+			try {
+				newUser = await db.listUsers.create({
+					username,
+					password: password,
+					password_encode: hashedPassword
+				});
+			} catch (dbError) {
+				// [4-1]: Handle specific database errors
+				if (dbError.name === 'SequelizeUniqueConstraintError') {
+					LOG.warn('Database error during registration - username already exists:', username);
+					return res.status(409).json({ success: false, message: "Username already exists" });
+				}
+				LOG.error('Unexpected database error during registration:', dbError);
+				throw dbError; // Re-throw for general error handling
+			}
+			LOG.debug('Register user successfully:', newUser.username);
+
+			// [5]: Return consistent response format
+			return res.status(201).json({
+				success: true,
+				message: 'User registered successfully',
+				data: { user: { username: newUser.username } }
+			});
+
+		} catch (error) {
+			// General error handling with consistent format
+			LOG.error('Registration error:', error);
+			return res.status(500).json({ success: false, message: 'Internal server error' });
+		}
+	},
+
+	// ============================
+	// Login
+	// ============================
+	// [4-B]: User login
+	login: async (req, res) => {
+		LOG.debug('Login endpoint hit with body:\n', req.body?.username);
+		try {
+			// [1]: Validate input using Joi schema
+			const { error, value } = loginSchema.validate(req.body);
+			if (error) {
+				LOG.error('Validation error during login:', error.details[0].message);
+				return res.status(422).json({ success: false, message: error.details[0].message });
+			}
+			const { username, password } = value;
+
+			// [2]: Find user
+			const user = await db.listUsers.findOne({ where: { username } });
+			if (!user) {
+				LOG.warn('Attempt to login with invalid username:', username);
+				return res.status(401).json({ success: false, message: 'Invalid credentials' });
+			}
+
+			// [3]: Check password with bcrypt
+			const isPasswordValid = await bcrypt.compare(password, user.password_encode);
+			if (!isPasswordValid) {
+				LOG.warn('Attempt to login with invalid password for user:', username);
+				return res.status(401).json({ success: false, message: 'Invalid credentials' });
+			}
+
+			// [4]: Check if user already has an active session
+			if(tokenManager.validateUser(username)) {
+				LOG.warn('User already has an active session:', username);
+				return res.status(409).json({ success: false, message: 'User already logged in' });
+			};
+
+			// [5]: Generate JWT token with expiration info
+			const token = jwt.sign(
+				{ username: user.username },
+				JWT_SECRET,
+
+				{ expiresIn: `${TOKEN_EXPIRATION_HOURS}h` }
+			);
+
+			// [6]: Save token to token manager with auto-expiration (1 hour)
+			tokenManager.saveToken(token, user.username, TOKEN_EXPIRATION_HOURS); // Use the configured expiration hours
+
+			// [6-1]: Save login info
+			try {
+				await db.tbInfoLogin.create({
+					time: new Date(),
+					user: user.username,
+					token: token
+				});
+			} catch (logError) {
+				LOG.warn('Failed to write login info:', logError?.message);
+			}
+
+			LOG.debug('Login successful for user:', user.username);
+			// [7]: Return consistent response format with token details
+			return res.status(200).json({
+				success: true,
+				message: 'Login successful',
+				data: {
+					user: { username: user.username },
+					token: token,
+					expiresIn: TOKEN_EXPIRATION_HOURS // Add expiration info for client
+				}
+			});
+
+		} catch (error) {
+			// General error handling
+			LOG.error('Login error:', error);
+			return res.status(500).json({ success: false, message: 'Internal server error' });
+		}
+	},
+
+	// ============================
+	// Logout
+	// ============================
+	// [4-C]: User logout
+	logout: async (req, res) => {
+		LOG.debug('show request body: ', req.body);
+		const username = req.user?.username;
+		const token = req.token;
+		LOG.debug('Logout endpoint hit for user:', username);
+		try {
+			
+			if(!username) {
+				LOG.warn('Logout attempted without authenticated user');
+				return res.status(401).json({
+					success: false,
+					message: 'Unauthorized'
+				});
+			}
+
+			// [4-C-1]: Save logout info
+			try {
+				await db.tbInfoLogout.create({
+					time: new Date(),
+					user: username,
+					token: token || ''
+				});
+			} catch (logError) {
+				LOG.warn('Failed to write logout info:', logError?.message);
+			}
+
+			tokenManager.logout(username);
+			LOG.debug('Logout successful for user:', username);
+			return res.status(200).json({
+				success: true,
+				message: 'Logout successful'
+			});
+		} catch (error) {
+			// General error handling
+			LOG.error('Logout error:', error);
+			return res.status(500).json({
+				success: false,
+				message: 'Internal server error'
+			});
+		}
+	}
+};
